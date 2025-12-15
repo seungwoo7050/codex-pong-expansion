@@ -3,11 +3,13 @@ package com.codexpong.backend.config;
 import com.codexpong.backend.auth.model.AuthenticatedUser;
 import com.codexpong.backend.auth.service.AuthService;
 import com.codexpong.backend.auth.service.AuthTokenService;
+import com.codexpong.backend.security.ratelimit.RateLimitService;
 import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.socket.WebSocketHandler;
@@ -34,15 +36,21 @@ public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
 
     private final AuthTokenService authTokenService;
     private final AuthService authService;
+    private final RateLimitService rateLimitService;
 
-    public WebSocketAuthHandshakeInterceptor(AuthTokenService authTokenService, AuthService authService) {
+    public WebSocketAuthHandshakeInterceptor(AuthTokenService authTokenService, AuthService authService,
+            RateLimitService rateLimitService) {
         this.authTokenService = authTokenService;
         this.authService = authService;
+        this.rateLimitService = rateLimitService;
     }
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler,
             Map<String, Object> attributes) {
+        if (!allowByRateLimit(request, response)) {
+            return false;
+        }
         String token = extractToken(request);
         if (token == null) {
             return false;
@@ -63,5 +71,19 @@ public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
         URI uri = request.getURI();
         MultiValueMap<String, String> params = UriComponentsBuilder.fromUri(uri).build().getQueryParams();
         return params.getFirst("token");
+    }
+
+    private boolean allowByRateLimit(ServerHttpRequest request, ServerHttpResponse response) {
+        if (request.getRemoteAddress() == null || request.getRemoteAddress().getAddress() == null) {
+            return true;
+        }
+        String ip = request.getRemoteAddress().getAddress().getHostAddress();
+        try {
+            rateLimitService.checkOrThrow("websocket", ip);
+            return true;
+        } catch (Exception e) {
+            response.setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
+            return false;
+        }
     }
 }

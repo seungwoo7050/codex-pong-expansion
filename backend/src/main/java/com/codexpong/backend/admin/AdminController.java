@@ -3,9 +3,11 @@ package com.codexpong.backend.admin;
 import com.codexpong.backend.admin.dto.AdminStatsResponse;
 import com.codexpong.backend.admin.dto.AdminUserResponse;
 import com.codexpong.backend.admin.dto.ModerationRequest;
+import com.codexpong.backend.auth.model.AuthenticatedUser;
 import com.codexpong.backend.game.GameResultResponse;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,8 +45,9 @@ public class AdminController {
     }
 
     @PostMapping("/users/{userId}/moderations")
-    public AdminUserResponse moderate(@PathVariable Long userId, @Valid @RequestBody ModerationRequest request) {
-        return adminService.moderate(userId, request);
+    public AdminUserResponse moderate(@AuthenticationPrincipal AuthenticatedUser admin, @PathVariable Long userId,
+            @Valid @RequestBody ModerationRequest request) {
+        return adminService.moderate(admin, userId, request);
     }
 
     @GetMapping("/matches")

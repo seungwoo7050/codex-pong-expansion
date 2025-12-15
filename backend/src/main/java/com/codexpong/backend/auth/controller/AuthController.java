@@ -7,8 +7,10 @@ import com.codexpong.backend.auth.dto.RegisterRequest;
 import com.codexpong.backend.auth.model.AuthenticatedUser;
 import com.codexpong.backend.auth.service.AuthService;
 import com.codexpong.backend.auth.service.OAuthLoginService;
+import com.codexpong.backend.security.ratelimit.RateLimitService;
 import jakarta.validation.Valid;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,10 +35,13 @@ public class AuthController {
 
     private final AuthService authService;
     private final OAuthLoginService oauthLoginService;
+    private final RateLimitService rateLimitService;
 
-    public AuthController(AuthService authService, OAuthLoginService oauthLoginService) {
+    public AuthController(AuthService authService, OAuthLoginService oauthLoginService,
+            RateLimitService rateLimitService) {
         this.authService = authService;
         this.oauthLoginService = oauthLoginService;
+        this.rateLimitService = rateLimitService;
     }
 
     /**
@@ -61,7 +66,9 @@ public class AuthController {
      *   - AuthResponse: 토큰 문자열과 만료 시각, 사용자 프로필
      */
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        String clientKey = servletRequest.getRemoteAddr();
+        rateLimitService.checkOrThrow("login", clientKey);
         return authService.login(request);
     }
 

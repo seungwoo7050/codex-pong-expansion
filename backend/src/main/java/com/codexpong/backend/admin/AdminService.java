@@ -3,11 +3,13 @@ package com.codexpong.backend.admin;
 import com.codexpong.backend.admin.dto.AdminStatsResponse;
 import com.codexpong.backend.admin.dto.AdminUserResponse;
 import com.codexpong.backend.admin.dto.ModerationRequest;
+import com.codexpong.backend.auth.model.AuthenticatedUser;
 import com.codexpong.backend.chat.domain.ChatMute;
 import com.codexpong.backend.chat.service.ChatModerationService;
 import com.codexpong.backend.game.GameResultRepository;
 import com.codexpong.backend.game.GameResultResponse;
 import com.codexpong.backend.game.service.GameRoomService;
+import com.codexpong.backend.security.audit.AuditLogService;
 import com.codexpong.backend.user.domain.User;
 import com.codexpong.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -37,13 +39,16 @@ public class AdminService {
     private final GameResultRepository gameResultRepository;
     private final ChatModerationService chatModerationService;
     private final GameRoomService gameRoomService;
+    private final AuditLogService auditLogService;
 
     public AdminService(UserRepository userRepository, GameResultRepository gameResultRepository,
-            ChatModerationService chatModerationService, GameRoomService gameRoomService) {
+            ChatModerationService chatModerationService, GameRoomService gameRoomService,
+            AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.gameResultRepository = gameResultRepository;
         this.chatModerationService = chatModerationService;
         this.gameRoomService = gameRoomService;
+        this.auditLogService = auditLogService;
     }
 
     public List<AdminUserResponse> listUsers() {
@@ -67,7 +72,10 @@ public class AdminService {
                 .toList();
     }
 
-    public AdminUserResponse moderate(Long userId, ModerationRequest request) {
+    public AdminUserResponse moderate(AuthenticatedUser admin, Long userId, ModerationRequest request) {
+        if (admin == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "관리자 인증이 필요합니다.");
+        }
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
@@ -79,6 +87,9 @@ public class AdminService {
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "지원하지 않는 제재 유형입니다.");
         }
         User saved = userRepository.save(target);
+        auditLogService.recordAdminAction(admin, "USER_MODERATION", "USER", userId.toString(),
+                String.format("action=%s,reason=%s,duration=%d", request.getAction(), request.getReason(),
+                        request.getDurationMinutes()));
         return AdminUserResponse.from(saved, activeMuteExpiry(userId).orElse(null));
     }
 

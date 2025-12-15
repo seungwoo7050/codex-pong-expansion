@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
  *   - DLQ에 적재된 이벤트를 조회/정리하기 위한 리포지토리다.
  */
 public interface DeadLetterEventRepository extends JpaRepository<DeadLetterEvent, Long> {
+
+    boolean existsByEventId(String eventId);
 }
