@@ -9,6 +9,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * [서비스] backend/src/main/java/com/codexpong/backend/async/outbox/OutboxRelayService.java
@@ -17,6 +19,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @Service
 public class OutboxRelayService {
+
+    private static final Logger log = LoggerFactory.getLogger(OutboxRelayService.class);
 
     private final OutboxEventRepository outboxEventRepository;
     private final DeadLetterEventRepository deadLetterEventRepository;
@@ -91,9 +95,13 @@ public class OutboxRelayService {
             event.markAttempt(error.getMessage());
             if (event.getAttempts() >= properties.getMaxAttempts()) {
                 event.markFailed(error.getMessage());
-                deadLetterEventRepository.save(
-                        new DeadLetterEvent(event.getEventId(), event.getType(), event.getPayload(), event.getAttempts(),
-                                error.getMessage()));
+                if (!deadLetterEventRepository.existsByEventId(event.getEventId())) {
+                    deadLetterEventRepository.save(
+                            new DeadLetterEvent(event.getEventId(), event.getType(), event.getPayload(), event.getAttempts(),
+                                    error.getMessage()));
+                    log.warn("[OUTBOX_DLQ] eventId={} attempts={} status={}", event.getEventId(), event.getAttempts(),
+                            event.getStatus());
+                }
             }
             outboxEventRepository.save(event);
         });

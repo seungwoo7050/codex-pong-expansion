@@ -5,6 +5,7 @@ import com.codexpong.backend.chat.dto.ChatHistoryResponse;
 import com.codexpong.backend.chat.dto.ChatMessageResponse;
 import com.codexpong.backend.chat.dto.ChatSendRequest;
 import com.codexpong.backend.chat.service.ChatService;
+import com.codexpong.backend.security.ratelimit.RateLimitService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,15 +30,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatController {
 
     private final ChatService chatService;
+    private final RateLimitService rateLimitService;
 
-    public ChatController(ChatService chatService) {
+    public ChatController(ChatService chatService, RateLimitService rateLimitService) {
         this.chatService = chatService;
+        this.rateLimitService = rateLimitService;
     }
 
     @PostMapping("/dm/{targetUserId}")
     public ChatMessageResponse sendDm(@AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long targetUserId,
             @Valid @RequestBody ChatSendRequest request) {
+        rateLimitService.checkOrThrow("chat", user.id().toString());
         return chatService.sendDm(user.id(), targetUserId, request.getContent());
     }
 
@@ -50,6 +54,7 @@ public class ChatController {
     @PostMapping("/lobby")
     public ChatMessageResponse sendLobby(@AuthenticationPrincipal AuthenticatedUser user,
             @Valid @RequestBody ChatSendRequest request) {
+        rateLimitService.checkOrThrow("chat", user.id().toString());
         return chatService.sendLobby(user.id(), request.getContent());
     }
 
@@ -61,6 +66,7 @@ public class ChatController {
     @PostMapping("/match/{roomId}")
     public ChatMessageResponse sendMatch(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String roomId,
             @Valid @RequestBody ChatSendRequest request) {
+        rateLimitService.checkOrThrow("chat", user.id().toString());
         return chatService.sendMatch(user.id(), roomId, request.getContent());
     }
 

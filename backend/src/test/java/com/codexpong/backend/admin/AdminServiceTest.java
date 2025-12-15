@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.codexpong.backend.admin.dto.AdminUserResponse;
 import com.codexpong.backend.admin.dto.ModerationRequest;
 import com.codexpong.backend.admin.dto.ModerationRequest.ActionType;
+import com.codexpong.backend.auth.model.AuthenticatedUser;
 import com.codexpong.backend.game.GameResult;
 import com.codexpong.backend.game.GameResultRepository;
 import com.codexpong.backend.game.domain.MatchType;
@@ -44,19 +45,21 @@ class AdminServiceTest {
     @Test
     @DisplayName("밴과 정지, 뮤트 적용 시 사용자 상태가 업데이트된다")
     void moderateUserUpdatesStatus() {
+        User admin = userRepository.save(new User("admin", "pass", "관리자", null));
         User target = userRepository.save(new User("admin-target", "pass", "관리대상", null));
+        AuthenticatedUser actor = new AuthenticatedUser(admin.getId(), admin.getUsername(), admin.getNickname());
 
         ModerationRequest banRequest = buildRequest(ActionType.BAN, 0, "테스트 밴");
-        AdminUserResponse banned = adminService.moderate(target.getId(), banRequest);
+        AdminUserResponse banned = adminService.moderate(actor, target.getId(), banRequest);
         assertTrue(banned.banned(), "밴 플래그가 설정되어야 한다");
         assertEquals("테스트 밴", banned.banReason(), "밴 사유가 보존되어야 한다");
 
         ModerationRequest suspendRequest = buildRequest(ActionType.SUSPEND, 30, "30분 정지");
-        AdminUserResponse suspended = adminService.moderate(target.getId(), suspendRequest);
+        AdminUserResponse suspended = adminService.moderate(actor, target.getId(), suspendRequest);
         assertNotNull(suspended.suspendedUntil(), "정지 종료 시각이 기록되어야 한다");
 
         ModerationRequest muteRequest = buildRequest(ActionType.MUTE, 10, "채팅 제재");
-        AdminUserResponse muted = adminService.moderate(target.getId(), muteRequest);
+        AdminUserResponse muted = adminService.moderate(actor, target.getId(), muteRequest);
         assertNotNull(muted.mutedUntil(), "뮤트 만료 시각이 포함되어야 한다");
     }
 

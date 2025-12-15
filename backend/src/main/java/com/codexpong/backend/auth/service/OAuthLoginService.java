@@ -4,7 +4,11 @@ import com.codexpong.backend.auth.dto.AuthResponse;
 import com.codexpong.backend.auth.model.OAuthProfile;
 import com.codexpong.backend.user.domain.User;
 import com.codexpong.backend.user.repository.UserRepository;
+import java.util.Arrays;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,14 +31,22 @@ public class OAuthLoginService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
+    private final OAuthConsentService oauthConsentService;
+    private final Set<String> requiredScopes;
 
     public OAuthLoginService(KakaoOAuthClient kakaoOAuthClient, NaverOAuthClient naverOAuthClient,
-            UserRepository userRepository, PasswordEncoder passwordEncoder, AuthService authService) {
+            UserRepository userRepository, PasswordEncoder passwordEncoder, AuthService authService,
+            OAuthConsentService oauthConsentService,
+            @Value("${auth.oauth.required-scopes:profile email}") String requiredScopes) {
         this.kakaoOAuthClient = kakaoOAuthClient;
         this.naverOAuthClient = naverOAuthClient;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authService = authService;
+        this.oauthConsentService = oauthConsentService;
+        this.requiredScopes = Arrays.stream(requiredScopes.split(" "))
+                .filter(scope -> !scope.isBlank())
+                .collect(Collectors.toSet());
     }
 
     public AuthResponse loginWithKakao(String accessToken) {
@@ -51,7 +63,14 @@ public class OAuthLoginService {
         User user = userRepository.findByAuthProviderAndProviderUserId(profile.provider(), profile.providerUserId())
                 .orElseGet(() -> createUser(profile));
         authService.ensureActive(user);
+        ensureConsent(user, profile.provider());
         return authService.toAuthResponse(user);
+    }
+
+    private void ensureConsent(User user, String provider) {
+        if (!oauthConsentService.hasConsent(user.getId(), provider, requiredScopes)) {
+            oauthConsentService.recordConsent(user.getId(), provider, requiredScopes);
+        }
     }
 
     private User createUser(OAuthProfile profile) {
