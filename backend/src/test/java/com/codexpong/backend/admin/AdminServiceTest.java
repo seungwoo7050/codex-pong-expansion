@@ -8,6 +8,7 @@ import com.codexpong.backend.admin.dto.ModerationRequest.ActionType;
 import com.codexpong.backend.game.GameResult;
 import com.codexpong.backend.game.GameResultRepository;
 import com.codexpong.backend.game.domain.MatchType;
+import com.codexpong.backend.game.service.GameRoomService;
 import com.codexpong.backend.user.domain.User;
 import com.codexpong.backend.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -37,6 +38,9 @@ class AdminServiceTest {
     @Autowired
     private GameResultRepository gameResultRepository;
 
+    @Autowired
+    private GameRoomService gameRoomService;
+
     @Test
     @DisplayName("밴과 정지, 뮤트 적용 시 사용자 상태가 업데이트된다")
     void moderateUserUpdatesStatus() {
@@ -64,6 +68,8 @@ class AdminServiceTest {
         GameResult result = new GameResult(playerA, playerB, 5, 3, "room-1", MatchType.NORMAL,
                 0, 0, 1200, 1200, LocalDateTime.now(), LocalDateTime.now());
         gameResultRepository.save(result);
+
+        gameRoomService.listLiveRooms().forEach(room -> gameRoomService.removeRoom(room.roomId()));
 
         var stats = adminService.stats();
 
