@@ -1,79 +1,107 @@
 # CONTRACTS.md
 
-This document defines how external contracts are stored, versioned, and validated.
+Contract storage, compatibility policy, and validation rules.
 
-External contracts are:
-- REST API (OpenAPI)
-- WebSocket protocol (handshake + event schemas + semantics)
-- DB schema/migrations and public data semantics
-
----
-
-## 1) Canonical locations
-
-All canonical contracts live under `contracts/`:
-
-- REST (OpenAPI):
-  - `contracts/openapi.v1.0.0.yaml`
-  - `contracts/openapi.v1.1.0.yaml` (only if v1.1 changes REST)
-- WebSocket:
-  - `contracts/ws.v1.0.0.md`
-  - `contracts/ws.v1.1.0.md` (required because realtime architecture changes)
-- DB schema summary (human-readable):
-  - `contracts/db.v1.0.0.md`
-  - `contracts/db.v1.1.0.md` (only if schema changes)
-
-DB migrations remain the source of truth for schema execution, but the `contracts/db.*.md`
-files must summarize key tables/relations and “publicly relied-on” semantics.
+Contracts are canonical. Code must conform to contracts, not the other way around.
+However, some contract artifacts may be generated from code (e.g., OpenAPI export),
+and those generated artifacts are still canonical once committed.
 
 ---
 
-## 2) Contract change rule
+## 1) Canonical structure
 
-If you change any contract:
-1) Update the contract file in `contracts/` first.
-2) Add/modify tests that prove the contract.
-3) Implement code.
-4) Ensure backwards compatibility unless VERSIONING explicitly allows breaking changes.
-
----
-
-## 3) WebSocket contract must include (minimum)
-
-- endpoint path(s)
-- auth handshake (success/fail)
-- message envelope (fields, required vs optional)
-- event types and payload schema
-- ordering assumptions (if any)
-- ack/retry semantics (if any)
-- reconnect semantics (timeouts/windows, rejoin rules)
-- rate limits/backpressure behavior
-- failure semantics (what happens if shard dies, etc.)
-
----
-
-## 4) REST contract must include (minimum)
-
-- auth mechanism and required headers/cookies
-- error envelope schema
-- endpoints and payload schemas
-
-If OpenAPI is generated, the repo must still store an exported, stable file under `contracts/`.
+contracts/
+  external/
+    openapi.v1.5.yaml
+    ws.v1.5.md
+    errors.md
+    auth.md
+  services/                   # gRPC contracts (v2.0+)
+    identity/v2.proto
+    match/v2.proto
+    chat/v2.proto
+    matchmaking/v2.proto
+    rating/v2.proto
+  events/                     # event schemas (v2.1+)
+    envelope.v1.md
+    match-ended.v1.json
+    abuse-signal.v1.json
+    rank-updated.v1.json
+  db/
+    db.v1.5.md
+    db.v2.md
 
 ---
 
-## 5) DB contract summary must include (minimum)
+## 2) Contract-first rule (how it works in practice)
 
-- key tables and relations
-- important indexes/constraints
-- data ownership rules (what writes what)
-- versioned behavior notes that consumers rely on (e.g., idempotency tables)
+If behavior changes any of:
+- external REST/WS
+- internal gRPC
+- event payload schemas
+- public DB semantics
+
+then contracts/** MUST be updated and committed in the same change set.
+
+### Generated artifacts rule (OpenAPI)
+- REST contract is stored as OpenAPI YAML under contracts/external/.
+- It may be exported from code, but:
+  - export must be deterministic and documented,
+  - the exported file must be committed,
+  - and tests must validate it (scripts/contract-test.sh).
+
+### Hand-authored contracts rule (WS / gRPC / events)
+- WS contract markdown, proto files, and event schema files are hand-authored.
+- Agents may derive them from existing code/behavior, but the contract file becomes the canonical truth.
 
 ---
 
-## 6) Validation requirements
+## 3) Compatibility policies
 
-- CI (or local scripts) MUST validate:
-  - OpenAPI schema is syntactically valid
-  - WS contract file exists for target version
-  - DB migrations run on clean DB (integration test or script)
+### External REST/WS
+- Backward compatible by default.
+- Breaking changes require:
+  - explicit VERSIONING scope,
+  - migration/deprecation notes,
+  - and e2e coverage.
+
+### Protobuf (internal)
+Allowed (non-breaking):
+- add optional fields
+- add new messages / new RPCs
+
+Breaking:
+- removing fields
+- reusing field tags with new meaning
+- changing field types/semantics without a new version and deprecation plan
+
+---
+
+## 4) Event envelope policy (v2.1+)
+
+All events MUST include:
+- eventId (idempotency key)
+- eventType
+- schemaVersion
+- occurredAt
+- traceId/correlationId
+- producer (service name)
+- payload (validated)
+
+Reliability stance:
+- at-least-once + idempotent consumers
+- no exactly-once claims
+
+---
+
+## 5) Validation requirements (scripts/CI)
+
+Repo MUST provide:
+- scripts/contract-test.sh
+  - validate OpenAPI YAML syntax
+  - compile all protos
+  - ensure required event schema files exist (and are structurally valid)
+
+- scripts/migration-test.sh
+  - boot key services with clean DB schemas
+  - run minimal gRPC smoke between edge-api and at least one service
