@@ -5,3 +5,4 @@ cd "$(dirname "$0")/.."
 if [ -d frontend ]; then
   ./scripts/test-frontend.sh
 fi
+./scripts/test-infra.sh

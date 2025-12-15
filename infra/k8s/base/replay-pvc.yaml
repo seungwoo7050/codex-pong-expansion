@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: replay-data
+  namespace: codexpong
+  labels:
+    app.kubernetes.io/name: replay-data
+    app.kubernetes.io/part-of: codexpong
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
