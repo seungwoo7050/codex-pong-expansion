@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: codexpong
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: codexpong
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+      app.kubernetes.io/part-of: codexpong
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/part-of: codexpong
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: backend
+          image: codexpong/backend:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: mariadb
+            - name: DB_NAME
+              value: codexpong
+            - name: DB_USER
+              value: codexpong
+            - name: DB_PASSWORD
+              value: codexpong
+            - name: AUTH_JWT_SECRET
+              value: change-me-in-prod-secret-please-keep-long
+            - name: REPLAY_STORAGE_PATH
+              value: /data/replays
+            - name: REPLAY_RETENTION_MAX_PER_USER
+              value: "20"
+            - name: REDIS_HOST
+              value: redis
+            - name: JOB_QUEUE_ENABLED
+              value: "true"
+            - name: JOB_QUEUE_REQUEST_STREAM
+              value: job.requests
+            - name: JOB_QUEUE_PROGRESS_STREAM
+              value: job.progress
+            - name: JOB_QUEUE_RESULT_STREAM
+              value: job.results
+            - name: JOB_QUEUE_CONSUMER_GROUP
+              value: replay-jobs
+            - name: JOB_EXPORT_PATH
+              value: /data/replays/exports
+            - name: TZ
+              value: Asia/Seoul
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - "sleep 10"
+          volumeMounts:
+            - name: replay-data
+              mountPath: /data/replays
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: replay-data
+          persistentVolumeClaim:
+            claimName: replay-data

@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: codexpong-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+spec:
+  project: default
+  destination:
+    namespace: codexpong
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: https://github.com/codexpong/codex-pong-expansion
+    targetRevision: HEAD
+    path: infra/k8s/overlays/gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  revisionHistoryLimit: 3

@@ -42,6 +42,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(registry -> registry
                         .requestMatchers("/api/health/**").permitAll()
+                        .requestMatchers("/actuator/health/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/oauth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/chat/lobby", "/api/chat/match/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
