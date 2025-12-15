@@ -1,0 +1,52 @@
+# Codex Pong 프로젝트용 .gitignore (v0.1.0~)
+# 모든 주석은 반드시 한글로 작성해야 합니다.
+
+# 백엔드(Spring Boot, Gradle)
+/backend/build/
+/backend/.gradle/
+/backend/out/
+/backend/.idea/
+/backend/.classpath
+/backend/.project
+/backend/.settings/
+/backend/gradle-app.setting
+/backend/gradle/wrapper/gradle-wrapper.jar
+/backend/gradlew*
+/backend/.DS_Store
+
+# 프론트엔드(React, Vite)
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.env*
+/frontend/.DS_Store
+/frontend/.vite/
+
+# 공통
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+.env*
+.idea/
+.vscode/
+
+# Docker
+**/tmp/
+**/.docker/
+**/docker-data/
+
+# 테스트/커버리지
+**/coverage/
+**/test-results/
+**/test-output/
+/build/replays/
+/build/test-exports/
+**/build/replays/exports/
+/worker/.pytest_cache/
+/worker/__pycache__/
+
+# 기타
+!.gitignore
+# 성능 캡처 아카이브(바이너리 ZIP)는 저장소에 포함하지 않음
+reports/performance/v0.14.0/*.zip

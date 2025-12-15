@@ -1,0 +1,13 @@
+/* v0.2.0 인증/프로필 보조 스타일 (세부 스타일은 index.css에서 관리) */
+.nav {
+  align-items: center;
+}
+
+.nav .link-button {
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.nav .nickname {
+  padding-left: 8px;
+}

@@ -1,0 +1,17 @@
+# [설정] infra/monitoring/prometheus.yml
+# 설명:
+#   - v0.9.0에서 백엔드 애플리케이션 메트릭을 수집하기 위한 Prometheus 스크레이프 설정이다.
+#   - Docker Compose 내부 서비스명과 포트를 기준으로 타깃을 정의한다.
+# 버전: v0.9.0
+# 관련 설계문서:
+#   - design/infra/v0.9.0-monitoring-stack.md
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'codexpong-backend'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - 'backend:8080'

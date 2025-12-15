@@ -1,0 +1,16 @@
+# [설정] infra/monitoring/grafana/dashboards/dashboards.yml
+# 설명:
+#   - admin-overview.json 대시보드를 자동으로 로드한다.
+# 버전: v0.9.0
+# 관련 설계문서:
+#   - design/infra/v0.9.0-monitoring-stack.md
+apiVersion: 1
+providers:
+  - name: default
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

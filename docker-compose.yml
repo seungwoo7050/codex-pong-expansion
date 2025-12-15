@@ -1,0 +1,128 @@
+version: '3.9'
+services:
+  db:
+    image: mariadb:11
+    container_name: codexpong-db
+    environment:
+      - MARIADB_ROOT_PASSWORD=rootpass
+      - MARIADB_DATABASE=codexpong
+      - MARIADB_USER=codexpong
+      - MARIADB_PASSWORD=codexpong
+      - TZ=Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--skip-character-set-client-handshake"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: codexpong-redis
+    environment:
+      - TZ=Asia/Seoul
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "no"]
+
+  backend:
+    build: ./backend
+    container_name: codexpong-backend
+    environment:
+      - DB_HOST=db
+      - DB_NAME=codexpong
+      - DB_USER=codexpong
+      - DB_PASSWORD=codexpong
+      - AUTH_JWT_SECRET=change-me-in-prod-secret-please-keep-long
+      - REPLAY_STORAGE_PATH=/data/replays
+      - REPLAY_RETENTION_MAX_PER_USER=20
+      - REDIS_HOST=redis
+      - JOB_QUEUE_ENABLED=true
+      - JOB_QUEUE_REQUEST_STREAM=job.requests
+      - JOB_QUEUE_PROGRESS_STREAM=job.progress
+      - JOB_QUEUE_RESULT_STREAM=job.results
+      - JOB_QUEUE_CONSUMER_GROUP=replay-jobs
+      - JOB_EXPORT_PATH=/data/replays/exports
+      - TZ=Asia/Seoul
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    restart: unless-stopped
+    volumes:
+      - replay_data:/data/replays
+
+  frontend:
+    build: ./frontend
+    container_name: codexpong-frontend
+    environment:
+      - VITE_BACKEND_URL=http://localhost:8080
+      - VITE_BACKEND_WS=ws://localhost:8080
+      - TZ=Asia/Seoul
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+
+  replay-worker:
+    build: ./worker
+    container_name: codexpong-replay-worker
+    environment:
+      - REDIS_HOST=redis
+      - JOB_QUEUE_REQUEST_STREAM=job.requests
+      - JOB_QUEUE_PROGRESS_STREAM=job.progress
+      - JOB_QUEUE_RESULT_STREAM=job.results
+      - JOB_QUEUE_CONSUMER_GROUP=replay-jobs
+      - WORKER_ID=replay-worker-1
+      - JOB_EXPORT_PATH=/data/replays/exports
+      - TZ=Asia/Seoul
+    depends_on:
+      - redis
+    volumes:
+      - replay_data:/data/replays
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: codexpong-prometheus
+    environment:
+      - TZ=Asia/Seoul
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    container_name: codexpong-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - TZ=Asia/Seoul
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./infra/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  nginx:
+    build: ./infra/nginx
+    container_name: codexpong-nginx
+    environment:
+      - TZ=Asia/Seoul
+    depends_on:
+      - backend
+      - frontend
+      - prometheus
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  replay_data:

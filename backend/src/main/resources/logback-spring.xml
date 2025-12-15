@@ -1,0 +1,23 @@
+<configuration>
+    <!--
+      [로그 설정] backend/src/main/resources/logback-spring.xml
+      설명:
+        - v0.9.0에서 요청/도메인 로그를 JSON 포맷으로 출력해 수집과 분석을 단순화한다.
+        - 콘솔 출력에 logstash-logback-encoder를 사용한다.
+      버전: v0.9.0
+      관련 설계문서:
+        - design/backend/v0.9.0-admin-and-ops.md
+    -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <property name="LOG_PATTERN" value="%msg"/>
+
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timeZone>Asia/Seoul</timeZone>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="JSON_CONSOLE"/>
+    </root>
+</configuration>

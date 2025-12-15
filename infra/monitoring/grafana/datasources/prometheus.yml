@@ -1,0 +1,16 @@
+# [설정] infra/monitoring/grafana/datasources/prometheus.yml
+# 설명:
+#   - 로컬 Grafana 인스턴스가 Prometheus 컨테이너를 기본 데이터 소스로 사용하도록 지정한다.
+# 버전: v0.9.0
+# 관련 설계문서:
+#   - design/infra/v0.9.0-monitoring-stack.md
+apiVersion: 1
+deleteDatasources:
+  - name: Prometheus
+    type: prometheus
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true

@@ -1,0 +1,365 @@
+:root {
+  font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+  color: #e6e8ec;
+  background-color: #0d1117;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+body {
+  margin: 0;
+  background: #0d1117;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #1f2937;
+  background: #111827;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero {
+  background: linear-gradient(135deg, #1f2937, #0f172a);
+  padding: 32px;
+  border-radius: 16px;
+  border: 1px solid #1f2937;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background: #10b981;
+  color: #0b0f16;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+.panel {
+  background: #0f172a;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #cbd5e1;
+}
+
+input {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #111827;
+  color: #e5e7eb;
+}
+
+.scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+/* 긴 리스트의 리플로우를 줄이기 위한 가상화 컨테이너 */
+.list.virtualized {
+  max-height: 540px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.list-item {
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 12px;
+  background: #0b1220;
+}
+
+.friend-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.score {
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #1f2937;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.badge.online {
+  background: #064e3b;
+  color: #34d399;
+}
+
+.badge.offline {
+  background: #1f2937;
+  color: #94a3b8;
+}
+
+.friend-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-form {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.nickname {
+  font-weight: 700;
+  color: #a5b4fc;
+}
+
+.error {
+  color: #f87171;
+  margin: 4px 0 0;
+}
+
+.success {
+  color: #34d399;
+  margin: 4px 0 0;
+}
+
+.bracket {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.bracket-round {
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 12px;
+  background: #0b1220;
+}
+
+.bracket-match {
+  border: 1px dashed #1f2937;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.game-area {
+  display: grid;
+  gap: 12px;
+}
+
+.court {
+  position: relative;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.04) 0%, rgba(15, 23, 42, 0.9) 60%);
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.paddle {
+  position: absolute;
+  width: 12px;
+  background: linear-gradient(180deg, #22d3ee, #1d4ed8);
+  border-radius: 8px;
+}
+
+.paddle.left {
+  left: 0;
+}
+
+.paddle.right {
+  right: 0;
+}
+
+.ball {
+  position: absolute;
+  background: #fbbf24;
+  border-radius: 50%;
+}
+
+.scoreboard {
+  display: flex;
+  gap: 12px;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+}
+
+.hint {
+  color: #93c5fd;
+  margin-top: 8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.table th,
+.table td {
+  border: 1px solid #1f2937;
+  padding: 10px;
+  text-align: left;
+}
+
+.table th {
+  background: #0b1220;
+}
+
+.job-drawer {
+  position: fixed;
+  right: 24px;
+  top: 120px;
+  width: 340px;
+  background: #0f172a;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 16px;
+  z-index: 20;
+}
+
+.job-drawer__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.job-drawer__body {
+  display: grid;
+  gap: 12px;
+}
+
+.job-logs {
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 8px;
+  background: #0b1220;
+}
+
+.job-logs__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.job-logs ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.progress-label {
+  display: grid;
+  gap: 6px;
+}
