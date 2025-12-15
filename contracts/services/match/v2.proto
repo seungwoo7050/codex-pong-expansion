@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package codexpong.match.v2;
+
+option java_multiple_files = true;
+option java_package = "com.codexpong.match.contract.v2";
+option java_outer_classname = "MatchServiceV2";
+
+message TraceContext {
+  string trace_id = 1;
+  string correlation_id = 2;
+  string shard_instance = 3;
+}
+
+enum MatchClosureReason {
+  MATCH_CLOSURE_REASON_UNKNOWN = 0;
+  MATCH_CLOSURE_REASON_COMPLETED = 1;
+  MATCH_CLOSURE_REASON_PLAYER_DISCONNECT = 2;
+  MATCH_CLOSURE_REASON_ADMIN_TERMINATION = 3;
+  MATCH_CLOSURE_REASON_TIMEOUT = 4;
+}
+
+message PlayerResult {
+  string user_id = 1;
+  int32 score = 2;
+  bool winner = 3;
+}
+
+message PersistMatchResultRequest {
+  TraceContext trace = 1;
+  string match_id = 2;
+  repeated PlayerResult players = 3;
+  MatchClosureReason closure_reason = 4;
+  int64 started_at_epoch_ms = 5;
+  int64 ended_at_epoch_ms = 6;
+  string shard_region = 7;
+}
+
+message PersistMatchResultResponse {
+  string result_id = 1;
+  string outbox_event_id = 2;
+}
+
+message MatchHistoryQuery {
+  TraceContext trace = 1;
+  string user_id = 2;
+  uint32 page_size = 3;
+  string page_token = 4;
+}
+
+message MatchHistoryEntry {
+  string match_id = 1;
+  repeated PlayerResult players = 2;
+  int64 ended_at_epoch_ms = 3;
+  MatchClosureReason closure_reason = 4;
+}
+
+message MatchHistoryPage {
+  repeated MatchHistoryEntry entries = 1;
+  string next_page_token = 2;
+}
+
+service MatchService {
+  rpc PersistMatchResult(PersistMatchResultRequest) returns (PersistMatchResultResponse);
+  rpc QueryMatchHistory(MatchHistoryQuery) returns (MatchHistoryPage);
+}

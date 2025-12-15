@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package codexpong.chat.v2;
+
+option java_multiple_files = true;
+option java_package = "com.codexpong.chat.contract.v2";
+option java_outer_classname = "ChatServiceV2";
+
+message TraceContext {
+  string trace_id = 1;
+  string correlation_id = 2;
+  string requesting_service = 3;
+}
+
+message SendMessageRequest {
+  TraceContext trace = 1;
+  string channel_id = 2;
+  string sender_id = 3;
+  string content = 4;
+  int64 sent_at_epoch_ms = 5;
+}
+
+message SendMessageResponse {
+  string message_id = 1;
+  int64 delivered_at_epoch_ms = 2;
+}
+
+message ListMessagesRequest {
+  TraceContext trace = 1;
+  string channel_id = 2;
+  uint32 limit = 3;
+  string cursor = 4;
+}
+
+message ChatMessage {
+  string message_id = 1;
+  string sender_id = 2;
+  string content = 3;
+  int64 sent_at_epoch_ms = 4;
+}
+
+message ListMessagesResponse {
+  repeated ChatMessage messages = 1;
+  string next_cursor = 2;
+}
+
+service ChatService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+}
