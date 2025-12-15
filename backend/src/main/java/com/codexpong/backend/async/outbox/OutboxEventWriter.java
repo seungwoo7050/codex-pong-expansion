@@ -3,6 +3,7 @@ package com.codexpong.backend.async.outbox;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -21,7 +22,7 @@ public class OutboxEventWriter {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public OutboxEvent append(String type, Function<String, Object> payloadBuilder) {
         try {
             OutboxEvent event = new OutboxEvent(type, "{}");
