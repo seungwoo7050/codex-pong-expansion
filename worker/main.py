@@ -3,23 +3,32 @@
 설명:
   - v0.13.0에서 GPU 기반 FFmpeg 인코더를 우선 적용하되, 미지원 시 자동으로 CPU(libx264) 경로로 폴백한다.
   - Redis Streams 잡 큐를 구독해 리플레이를 MP4/PNG로 변환하고, 지원 하드웨어 정보를 시작 시 로깅한다.
-버전: v0.13.0
+버전: v1.2.0
 관련 설계문서:
   - design/backend/v0.13.0-export-hw-accel-flags.md
+  - design/backend/v1.2.0-otel-tracing.md
 """
 
 import json
 import logging
 import os
+import random
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional
 
 import redis
 from PIL import Image, ImageDraw, ImageFont
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.trace import SpanContext, SpanKind, TraceFlags, TraceState
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
@@ -44,6 +53,55 @@ FRAME_INTERVAL_MS = int(1000 / FRAME_RATE)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("replay-worker")
+
+
+def _random_span_id() -> int:
+    span_id = random.getrandbits(64)
+    while span_id == 0:
+        span_id = random.getrandbits(64)
+    return span_id
+
+
+def _init_tracer() -> trace.Tracer:
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    resource = Resource.create({"service.name": "codexpong-replay-worker"})
+    provider = TracerProvider(resource=resource)
+    try:
+        exporter = OTLPSpanExporter(endpoint=endpoint) if endpoint else ConsoleSpanExporter()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("OTLP 익스포터 초기화 실패: %s", exc)
+        exporter = ConsoleSpanExporter()
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    return trace.get_tracer("replay-worker")
+
+
+try:
+    TRACER = _init_tracer()
+except Exception as exc:  # noqa: BLE001
+    logger.warning("OpenTelemetry 트레이서 초기화 실패, 콘솔 스팬으로 폴백: %s", exc)
+    fallback_provider = TracerProvider(resource=Resource.create({"service.name": "codexpong-replay-worker"}))
+    fallback_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    trace.set_tracer_provider(fallback_provider)
+    TRACER = trace.get_tracer("replay-worker")
+
+
+@contextmanager
+def start_worker_span(name: str, trace_id: Optional[str] = None, kind: SpanKind = SpanKind.INTERNAL):
+    parent_context = None
+    if trace_id and trace.is_valid_trace_id(trace_id):
+        span_context = SpanContext(
+            trace_id=int(trace_id, 16),
+            span_id=_random_span_id(),
+            is_remote=True,
+            trace_flags=TraceFlags.SAMPLED,
+            trace_state=TraceState(),
+        )
+        parent_context = trace.set_span_in_context(trace.NonRecordingSpan(span_context))
+    with TRACER.start_as_current_span(name, context=parent_context, kind=kind) as span:
+        if trace_id and not trace.is_valid_trace_id(trace_id):
+            span.set_attribute("correlation.trace_id", trace_id)
+        yield span
 
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
@@ -417,112 +475,116 @@ def run_ffmpeg(job_id: str, output_path: Path, frames: Iterable[bytes], expected
 def export_mp4(job_id: str, replay_id: str, options: dict,
                progress_cb: Callable[[str, int, str, str], None] = publish_progress,
                result_cb: Callable[..., None] = publish_result,
-               ffmpeg_runner: Callable[..., None] = run_ffmpeg) -> None:
-    try:
-        output_path = validate_output_path(options.get("outputPath"))
-    except OutputPathError as exc:
-        result_cb(job_id, "FAILED", error_code="INVALID_OUTPUT_PATH", error_message=str(exc))
-        return
-
-    input_path = options.get("inputPath")
-    duration_ms = safe_int(options.get("durationMs", 0), 0)
-    try:
-        events = load_events(input_path)
-    except ReplayFormatError as exc:
-        result_cb(job_id, "FAILED", error_code="INVALID_REPLAY_FORMAT", error_message=str(exc))
-        return
-
-    if output_path.exists() and is_valid_mp4(output_path):
-        checksum = checksum_file(output_path)
-        result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
-        return
-    if output_path.exists():
-        output_path.unlink(missing_ok=True)
-
-    expected_ms = calculate_expected_ms(events, duration_ms)
-    tmp_path = output_path.with_name(output_path.name + ".tmp")
-    tmp_path.unlink(missing_ok=True)
-
-    def run_encode(encoder: str, hwaccel: Optional[str] = None, filters: Optional[List[str]] = None) -> None:
-        frames = generate_frame_bytes(events, expected_ms)
-        ffmpeg_runner(job_id, tmp_path, frames, expected_ms, "ENCODE", progress_cb, encoder, hwaccel, filters)
-
-    hw_attempted = False
-    if is_hw_enabled() and SELECTED_HW_ENCODER:
-        hw_attempted = True
-        filters: Optional[List[str]] = None
-        hwaccel = None
-        if SELECTED_HW_ENCODER == "h264_vaapi":
-            hwaccel = "vaapi"
-            filters = ["format=nv12", "hwupload"]
-        elif SELECTED_HW_ENCODER == "h264_qsv":
-            hwaccel = "qsv"
-        elif SELECTED_HW_ENCODER == "h264_nvenc":
-            hwaccel = "cuda"
-        logger.info("하드웨어 인코딩 시도: encoder=%s, hwaccel=%s", SELECTED_HW_ENCODER, hwaccel or "none")
+               ffmpeg_runner: Callable[..., None] = run_ffmpeg,
+               trace_id: Optional[str] = None) -> None:
+    with start_worker_span("worker.export_mp4", trace_id, kind=SpanKind.CONSUMER):
         try:
-            run_encode(SELECTED_HW_ENCODER, hwaccel, filters)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("하드웨어 인코딩 실패, CPU 경로로 폴백: %s", exc)
-            tmp_path.unlink(missing_ok=True)
+            output_path = validate_output_path(options.get("outputPath"))
+        except OutputPathError as exc:
+            result_cb(job_id, "FAILED", error_code="INVALID_OUTPUT_PATH", error_message=str(exc))
+            return
 
-    try:
-        if not tmp_path.exists():
-            run_encode("libx264")
-        tmp_path.replace(output_path)
-        checksum = checksum_file(output_path)
-        result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
-    except RuntimeError as exc:
+        input_path = options.get("inputPath")
+        duration_ms = safe_int(options.get("durationMs", 0), 0)
+        try:
+            events = load_events(input_path)
+        except ReplayFormatError as exc:
+            result_cb(job_id, "FAILED", error_code="INVALID_REPLAY_FORMAT", error_message=str(exc))
+            return
+
+        if output_path.exists() and is_valid_mp4(output_path):
+            checksum = checksum_file(output_path)
+            result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
+            return
+        if output_path.exists():
+            output_path.unlink(missing_ok=True)
+
+        expected_ms = calculate_expected_ms(events, duration_ms)
+        tmp_path = output_path.with_name(output_path.name + ".tmp")
         tmp_path.unlink(missing_ok=True)
-        output_path.unlink(missing_ok=True)
-        code = "FFMPEG_FAILED_HW" if hw_attempted else "FFMPEG_FAILED"
-        result_cb(job_id, "FAILED", error_code=code, error_message=str(exc))
-    except Exception as exc:  # noqa: BLE001
-        tmp_path.unlink(missing_ok=True)
-        output_path.unlink(missing_ok=True)
-        code = "WORKER_ERROR"
-        if hw_attempted:
-            code = "WORKER_HW_FALLBACK_FAILED"
-        result_cb(job_id, "FAILED", error_code=code, error_message=str(exc))
+
+        def run_encode(encoder: str, hwaccel: Optional[str] = None, filters: Optional[List[str]] = None) -> None:
+            frames = generate_frame_bytes(events, expected_ms)
+            ffmpeg_runner(job_id, tmp_path, frames, expected_ms, "ENCODE", progress_cb, encoder, hwaccel, filters)
+
+        hw_attempted = False
+        if is_hw_enabled() and SELECTED_HW_ENCODER:
+            hw_attempted = True
+            filters: Optional[List[str]] = None
+            hwaccel = None
+            if SELECTED_HW_ENCODER == "h264_vaapi":
+                hwaccel = "vaapi"
+                filters = ["format=nv12", "hwupload"]
+            elif SELECTED_HW_ENCODER == "h264_qsv":
+                hwaccel = "qsv"
+            elif SELECTED_HW_ENCODER == "h264_nvenc":
+                hwaccel = "cuda"
+            logger.info("하드웨어 인코딩 시도: encoder=%s, hwaccel=%s", SELECTED_HW_ENCODER, hwaccel or "none")
+            try:
+                run_encode(SELECTED_HW_ENCODER, hwaccel, filters)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("하드웨어 인코딩 실패, CPU 경로로 폴백: %s", exc)
+                tmp_path.unlink(missing_ok=True)
+
+        try:
+            if not tmp_path.exists():
+                run_encode("libx264")
+            tmp_path.replace(output_path)
+            checksum = checksum_file(output_path)
+            result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
+        except RuntimeError as exc:
+            tmp_path.unlink(missing_ok=True)
+            output_path.unlink(missing_ok=True)
+            code = "FFMPEG_FAILED_HW" if hw_attempted else "FFMPEG_FAILED"
+            result_cb(job_id, "FAILED", error_code=code, error_message=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            tmp_path.unlink(missing_ok=True)
+            output_path.unlink(missing_ok=True)
+            code = "WORKER_ERROR"
+            if hw_attempted:
+                code = "WORKER_HW_FALLBACK_FAILED"
+            result_cb(job_id, "FAILED", error_code=code, error_message=str(exc))
 
 
 def export_thumbnail(job_id: str, replay_id: str, options: dict,
                      progress_cb: Callable[[str, int, str, str], None] = publish_progress,
-                     result_cb: Callable[..., None] = publish_result) -> None:
-    try:
-        output_path = validate_output_path(options.get("outputPath"))
-    except OutputPathError as exc:
-        result_cb(job_id, "FAILED", error_code="INVALID_OUTPUT_PATH", error_message=str(exc))
-        return
+                     result_cb: Callable[..., None] = publish_result,
+                     trace_id: Optional[str] = None) -> None:
+    with start_worker_span("worker.export_thumbnail", trace_id, kind=SpanKind.CONSUMER):
+        try:
+            output_path = validate_output_path(options.get("outputPath"))
+        except OutputPathError as exc:
+            result_cb(job_id, "FAILED", error_code="INVALID_OUTPUT_PATH", error_message=str(exc))
+            return
 
-    input_path = options.get("inputPath")
-    try:
-        events = load_events(input_path)
-    except ReplayFormatError as exc:
-        result_cb(job_id, "FAILED", error_code="INVALID_REPLAY_FORMAT", error_message=str(exc))
-        return
+        input_path = options.get("inputPath")
+        try:
+            events = load_events(input_path)
+        except ReplayFormatError as exc:
+            result_cb(job_id, "FAILED", error_code="INVALID_REPLAY_FORMAT", error_message=str(exc))
+            return
 
-    if output_path.exists() and is_valid_png(output_path):
-        checksum = checksum_file(output_path)
-        result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
-        return
-    if output_path.exists():
-        output_path.unlink(missing_ok=True)
+        if output_path.exists() and is_valid_png(output_path):
+            checksum = checksum_file(output_path)
+            result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
+            return
+        if output_path.exists():
+            output_path.unlink(missing_ok=True)
 
-    pivot_index = len(events) // 2
-    frame = render_frame(events[pivot_index].snapshot)
-    tmp_path = output_path.with_name(output_path.name + ".tmp")
-    tmp_path.unlink(missing_ok=True)
-    try:
-        frame.save(tmp_path, format="PNG")
-        tmp_path.replace(output_path)
-        checksum = checksum_file(output_path)
-        progress_cb(job_id, 100, "THUMBNAIL", "완료")
-        result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
-    except Exception as exc:  # noqa: BLE001
+        pivot_index = len(events) // 2
+        frame = render_frame(events[pivot_index].snapshot)
+        tmp_path = output_path.with_name(output_path.name + ".tmp")
         tmp_path.unlink(missing_ok=True)
-        output_path.unlink(missing_ok=True)
-        result_cb(job_id, "FAILED", error_code="WORKER_ERROR", error_message=str(exc))
+        try:
+            frame.save(tmp_path, format="PNG")
+            tmp_path.replace(output_path)
+            checksum = checksum_file(output_path)
+            progress_cb(job_id, 100, "THUMBNAIL", "완료")
+            result_cb(job_id, "SUCCEEDED", str(output_path), checksum)
+        except Exception as exc:  # noqa: BLE001
+            tmp_path.unlink(missing_ok=True)
+            output_path.unlink(missing_ok=True)
+            result_cb(job_id, "FAILED", error_code="WORKER_ERROR", error_message=str(exc))
 
 
 def process_request(fields: dict) -> None:
@@ -532,17 +594,20 @@ def process_request(fields: dict) -> None:
     options = {k: v for k, v in fields.items() if k not in {"jobId", "jobType", "replayId"}}
     if not job_id or not job_type:
         return
-    try:
-        publish_progress(job_id, 10, "QUEUE", "워커가 작업을 시작했습니다")
-        if job_type == "REPLAY_EXPORT_MP4":
-            export_mp4(job_id, replay_id, options)
-        elif job_type == "REPLAY_THUMBNAIL":
-            export_thumbnail(job_id, replay_id, options)
-        else:
-            publish_result(job_id, "FAILED", error_code="UNSUPPORTED_TYPE",
-                           error_message=f"지원하지 않는 유형 {job_type}")
-    except Exception as exc:  # noqa: BLE001
-        publish_result(job_id, "FAILED", error_code="WORKER_ERROR", error_message=str(exc))
+    trace_id = fields.get("traceId")
+    span_name = f"worker.process.{job_type.lower()}" if isinstance(job_type, str) else "worker.process.unknown"
+    with start_worker_span(span_name, trace_id, kind=SpanKind.CONSUMER):
+        try:
+            publish_progress(job_id, 10, "QUEUE", "워커가 작업을 시작했습니다")
+            if job_type == "REPLAY_EXPORT_MP4":
+                export_mp4(job_id, replay_id, options, trace_id=trace_id)
+            elif job_type == "REPLAY_THUMBNAIL":
+                export_thumbnail(job_id, replay_id, options, trace_id=trace_id)
+            else:
+                publish_result(job_id, "FAILED", error_code="UNSUPPORTED_TYPE",
+                               error_message=f"지원하지 않는 유형 {job_type}")
+        except Exception as exc:  # noqa: BLE001
+            publish_result(job_id, "FAILED", error_code="WORKER_ERROR", error_message=str(exc))
 
 
 def main_loop() -> None:
