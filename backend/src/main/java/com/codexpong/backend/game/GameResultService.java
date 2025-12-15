@@ -1,5 +1,8 @@
 package com.codexpong.backend.game;
 
+import com.codexpong.backend.async.event.MatchResultEventPayload;
+import com.codexpong.backend.async.event.OutboxEventType;
+import com.codexpong.backend.async.outbox.OutboxEventWriter;
 import com.codexpong.backend.game.domain.MatchType;
 import com.codexpong.backend.game.service.RankingService;
 import com.codexpong.backend.user.domain.User;
@@ -14,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 설명:
  *   - 실시간 경기 종료 시 결과를 생성하고 최근 전적을 조회한다.
  *   - v0.4.0에서는 랭크전 결과에 따라 User 레이팅을 갱신하고 변동 폭을 기록한다.
+ *   - v1.3.0에서는 아웃박스 이벤트로 매치 결과를 발행해 비동기 소비자가 처리하도록 한다.
  * 버전: v0.4.0
  * 관련 설계문서:
  *   - design/backend/v0.4.0-ranking-system.md
@@ -27,12 +31,14 @@ public class GameResultService {
 
     private final GameResultRepository gameResultRepository;
     private final RankingService rankingService;
+    private final OutboxEventWriter outboxEventWriter;
     private final ApplicationEventPublisher eventPublisher;
 
     public GameResultService(GameResultRepository gameResultRepository, RankingService rankingService,
-            ApplicationEventPublisher eventPublisher) {
+            OutboxEventWriter outboxEventWriter, ApplicationEventPublisher eventPublisher) {
         this.gameResultRepository = gameResultRepository;
         this.rankingService = rankingService;
+        this.outboxEventWriter = outboxEventWriter;
         this.eventPublisher = eventPublisher;
     }
 
@@ -55,6 +61,8 @@ public class GameResultService {
         GameResult gameResult = new GameResult(playerA, playerB, scoreA, scoreB, roomId, matchType,
                 ratingChangeA, ratingChangeB, ratingAfterA, ratingAfterB, startedAt, finishedAt);
         GameResult saved = gameResultRepository.save(gameResult);
+        outboxEventWriter.append(OutboxEventType.MATCH_RESULT_RECORDED,
+                eventId -> MatchResultEventPayload.from(eventId, saved));
         eventPublisher.publishEvent(saved);
         return saved;
     }

@@ -1,10 +1,12 @@
 package com.codexpong.backend;
 
+import com.codexpong.backend.async.outbox.OutboxRelayProperties;
 import com.codexpong.backend.job.JobExportProperties;
 import com.codexpong.backend.job.JobQueueProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * [부트스트랩] backend/src/main/java/com/codexpong/backend/CodexPongApplication.java
@@ -25,7 +27,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  *   - v0.12.0: 잡 큐/워커 설정 바인딩 추가
  */
 @SpringBootApplication
-@EnableConfigurationProperties({JobQueueProperties.class, JobExportProperties.class})
+@EnableScheduling
+@EnableConfigurationProperties({JobQueueProperties.class, JobExportProperties.class, OutboxRelayProperties.class})
 public class CodexPongApplication {
 
     public static void main(String[] args) {
